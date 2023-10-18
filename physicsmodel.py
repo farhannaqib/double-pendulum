@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 class DoublePendulum:
 
-    g = 9.81
+    G = 9.81
 
     @dataclass
     class AttachedMass:
@@ -20,41 +20,65 @@ class DoublePendulum:
     def __init__(self, m1, l1, theta1, thetadot1, m2, l2, theta2, thetadot2):
         self.p1 = self.AttachedMass(m1, l1, theta1, thetadot1)
         self.p2 = self.AttachedMass(m2, l2, theta2, thetadot2)
-
-    def A(self):
-        return (self.p2.mass * self.p2.length)/((self.p2.mass + self.p1.mass) * self.p1.length) * math.cos(self.p1.theta - self.p2.theta)
-    
-    def B(self):
-        return self.p1.length/self.p2.length * math.cos(self.p1.theta - self.p2.theta)
-    
-    def C(self): 
-        return -(self.p2.mass * self.p2.length) / ((self.p1.mass + self.p2.mass) * self.p1.length) * (self.p2.thetadot ** 2) * math.sin(self.p1.theta - self.p2.theta) - self.g * math.sin(self.p1.theta) / self.p1.length
-    
-    def D(self):
-        return (self.p1.length * (self.p1.thetadot ** 2) * math.sin(self.p1.theta - self.p2.theta) - self.g * math.sin(self.p2.theta)) / self.p2.length
-    
-    def det(self):
-        return 1 - self.A() * self.B()
-    
+        
     def updatePoints(self, deltaT): 
+        # Approximation is more unstable when using old values for theta
         self.p1.theta += self.p1.thetadot * deltaT
         self.p2.theta += self.p2.thetadot * deltaT
-        self.p1.thetadot += (self.C() - self.A() * self.D()) / self.det() * deltaT
-        self.p2.thetadot += (self.D() - self.B() * self.C()) / self.det() * deltaT
+
+        m1 = self.p1.mass
+        m2 = self.p2.mass
+        l1 = self.p1.length
+        l2 = self.p2.length
+        theta1 = self.p1.theta
+        theta2 = self.p2.theta
+        thetadot1 = self.p1.thetadot
+        thetadot2 = self.p2.thetadot
+
+        a = (m2 * l2) / ((m1 + m2) * l1) * math.cos(theta1 - theta2)
+        b = l1 / l2 * math.cos(theta1 - theta2)
+        c = -(m2 * l2) / ((m1 + m2) * l1) * (thetadot2 ** 2) * math.sin(theta1 - theta2) - self.G * math.sin(theta1) / l1
+        d = (l1 * (thetadot1 ** 2) * math.sin(theta1 - theta2) - self.G * math.sin(theta2)) / l2
+
+        self.p1.thetadot += (c - a * d) / (1 - a * b) * deltaT
+        self.p2.thetadot += (d - b * c) / (1 - a * b) * deltaT
+
+    def getCoord(self, massPoint = AttachedMass):
+        return [massPoint.length * math.sin(massPoint.theta), -massPoint.length * math.cos(massPoint.theta)]
 
     def getXs(self):
-        return [0, self.p1.length * math.sin(self.p1.theta), self.p1.length * math.sin(self.p1.theta) + self.p2.length * math.sin(self.p2.theta)]
+        return [0, self.getCoord(self.p1)[0], self.getCoord(self.p1)[0] + self.getCoord(self.p2)[0]]
     
     def getYs(self):
-        return [0, -self.p1.length * math.cos(self.p1.theta), -self.p1.length * math.cos(self.p1.theta) - self.p2.length * math.cos(self.p2.theta)]
+        return [0, self.getCoord(self.p1)[1], self.getCoord(self.p1)[1] + self.getCoord(self.p2)[1]]
+    
+    def K(self):
+        m1 = self.p1.mass
+        m2 = self.p2.mass
+        l1 = self.p1.length
+        l2 = self.p2.length
+        theta1 = self.p1.theta
+        theta2 = self.p2.theta
+        thetadot1 = self.p1.thetadot
+        thetadot2 = self.p2.thetadot
+        return 1/2.0 * m1 * (l1 * thetadot1) ** 2 + 1/2.0 * m2 * ((l1 * thetadot1) ** 2 + 
+                (l2 * thetadot2) ** 2 + (2 * l1 * l2 * thetadot1 * thetadot2 * math.cos(theta1 - theta2)))
 
+    def U(self):
+        m1 = self.p1.mass
+        m2 = self.p2.mass
+        l1 = self.p1.length
+        l2 = self.p2.length
+        theta1 = self.p1.theta
+        theta2 = self.p2.theta
+        return -self.G * ((m1 + m2) * l1 * math.cos(theta1) + (m2 * l2 * math.cos(theta2)))
 
 fig, ax = plt.subplots()
 
-theta1 = 1
-theta1dot = 0
-theta2 = -1
-theta2dot = 0
+theta1 = 0.2
+thetadot1 = 0
+theta2 = 0.4
+thetadot2 = 0
 
 l1 = 1
 l2 = 1
@@ -65,7 +89,7 @@ m2 = 1
 deltat = 0.05
 tmax = 10
 
-pendulum = DoublePendulum(m1, l1, theta1, theta1dot, m2, l2, theta2, theta2dot)
+pendulum = DoublePendulum(m1, l1, theta1, thetadot1, m2, l2, theta2, thetadot2)
 ax.set(xlim = (-(l1+l2)*1.1, (l1+l2)*1.1), ylim=(-(l1+l2)*1.1, .25))
 graph = ax.plot(pendulum.getXs(), pendulum.getYs())[0]
 
